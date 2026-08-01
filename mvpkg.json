@@ -1,0 +1,8 @@
+{
+  "name": "mvx-lang/mapfield",
+  "version": "1.0.0",
+  "description": "MAPFIELD — the %MAP% spec builder (Pick <-> JSON/YAML/XML projection)",
+  "license": "GPL-2.0-only",
+  "systems": ["udt"],
+  "dependencies": []
+}
