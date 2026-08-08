@@ -4,5 +4,6 @@
   "description": "MAPFIELD — the %MAP% spec builder (Pick <-> JSON/YAML/XML projection)",
   "license": "GPL-2.0-only",
   "systems": ["udt"],
+  "provides": ["mapfield"],
   "dependencies": []
 }
