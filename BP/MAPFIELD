@@ -21,4 +21,4 @@ FUNCTION MAPFIELD(MKEY, POS, CONV, TYPE, ASSOC)
          CASE 1              ; T = "TEXT"
       END CASE
    END
-   RETURN MKEY : @VM : POS : @VM : CONV : @VM : T : @VM : ASSOC
+   RETURN(MKEY : @VM : POS : @VM : CONV : @VM : T : @VM : ASSOC)
