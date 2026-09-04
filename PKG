@@ -1,5 +1,5 @@
 mapfield
 1.0
 MAPFIELD — the %MAP% spec builder (Pick <-> JSON/YAML/XML projection)
-udt
+udt uv jbase
 +mvpkg
