@@ -28,6 +28,7 @@ jobs:
       - uses: mvx-lang/mvx/.github/actions/publish-source@main
         with:
           package: mvx-lang/mapfield
+          artifact: mapfield
           title: mapfield
           body: "MAPFIELD — the %MAP% spec builder (Pick <-> JSON/YAML/XML projection). Pure BASIC; indexed by the package registry."
 
@@ -60,7 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           VER="${GITHUB_REF_NAME}"
-          BASE="mvx-lang_mapfield-$VER-${{ matrix.system }}-any-any-le"
+          BASE="mapfield-$VER-${{ matrix.system }}-any-any-le"
           rm -rf dist && mkdir -p dist
           sh build-pkg.sh dist
           tar czf "$BASE.tar.gz" -C dist mapfield
