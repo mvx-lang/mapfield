@@ -46,7 +46,7 @@ jobs:
   # `already_exists` on tag_name -- which leaves a release that looks complete
   # unless you count the assets (curl-cmd#7).
   account:
-    needs: [source, account]
+    needs: [source]
     strategy:
       max-parallel: 1
       matrix:
@@ -89,7 +89,7 @@ jobs:
   # Both directions are set explicitly, for the same reason: leaving the stable
   # case alone means it keeps whatever that race happened to leave behind.
   mark:
-    needs: [source]
+    needs: [source, account]
     runs-on: ubuntu-latest
     steps:
       - name: Say what this release is
