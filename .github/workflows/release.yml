@@ -31,6 +31,51 @@ jobs:
           title: mapfield
           body: "MAPFIELD — the %MAP% spec builder (Pick <-> JSON/YAML/XML projection). Pure BASIC; indexed by the package registry."
 
+  # ---- the account artifact, one per system it runs on ------------------------
+  # mapfield is BASIC only, so the staged account is IDENTICAL for udt, uv and
+  # jbase -- what differs is the system name in the artifact key, and the
+  # cataloging, which MVPKG does on the target.  Hence `any-any-le` and a plain
+  # hosted runner rather than the licensed containers: os/arch-locking a package
+  # with no native code would pin it to whichever machine packaged it.
+  #
+  # Without these the registry serves this package as `source` on every system,
+  # which is what it did for every port until now.
+  #
+  # AFTER source and ONE AT A TIME: each upload creates the release if it is not
+  # there yet, so jobs starting together race and all but one lose with
+  # `already_exists` on tag_name -- which leaves a release that looks complete
+  # unless you count the assets (curl-cmd#7).
+  account:
+    needs: [source, account]
+    strategy:
+      max-parallel: 1
+      matrix:
+        system: [udt, uv, jbase]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: Stage the ${{ matrix.system }} account
+        id: pkg
+        shell: bash
+        run: |
+          set -euo pipefail
+          VER="${GITHUB_REF_NAME}"
+          BASE="mvx-lang_mapfield-$VER-${{ matrix.system }}-any-any-le"
+          rm -rf dist && mkdir -p dist
+          sh build-pkg.sh dist
+          tar czf "$BASE.tar.gz" -C dist mapfield
+          sha256sum "$BASE.tar.gz" > "$BASE.tar.gz.sha256"
+          echo "tarball=$BASE.tar.gz" >> "$GITHUB_OUTPUT"
+          echo "checksum=$BASE.tar.gz.sha256" >> "$GITHUB_OUTPUT"
+      - name: Publish the ${{ matrix.system }} account asset
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: |
+            ${{ steps.pkg.outputs.tarball }}
+            ${{ steps.pkg.outputs.checksum }}
+          fail_on_unmatched_files: true
+
   # ---- what kind of release is this? ----------------------------------------
   # LAST, because it is correcting the publish steps rather than joining them.
   # Both of them create the release as a side effect of uploading to it, and
