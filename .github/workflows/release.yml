@@ -21,7 +21,26 @@ on:
 permissions:
   contents: write
 jobs:
+  # THE MANIFESTS MUST NAME THE TAG, and this runs before anything is built so a
+  # mismatch fails the release instead of shipping in it.  The published 1.1.0
+  # artifact declared itself 1.0.0, with PKG line 2 saying "1.0" and
+  # mvpkg.json "1.0.0" -- two spellings, so neither looked wrong beside the
+  # other, and nothing reads these fields back except MVPKG info on a stored
+  # manifest (#14).
+  #
+  # EVERY OTHER JOB DEPENDS ON THIS ONE, including `source`, whose staging lives
+  # outside this repo: publish-source and build-pkg.sh both copy the in-tree PKG
+  # and mvpkg.json verbatim, so checking those two files once covers all four
+  # artifacts.
+  manifests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - name: The manifests declare the tag
+        run: sh tests/manifest-version.sh "${GITHUB_REF_NAME}"
+
   source:
+    needs: [manifests]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
