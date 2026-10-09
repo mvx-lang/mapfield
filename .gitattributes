@@ -1,2 +1,5 @@
 # BASIC source held as records without a file extension (BP items).
 BP/* linguist-language=BASIC
+
+# The test is BASIC held the same way — an extensionless item.
+tests/*.SPEC linguist-language=BASIC

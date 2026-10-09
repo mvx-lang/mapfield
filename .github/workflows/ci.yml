@@ -8,11 +8,11 @@
 # -- PKG line 2 saying "1.0" and mvpkg.json "1.0.0", two spellings of a stale
 # number so neither looked wrong beside the other (#14).
 #
-# THE REAL TEST IS NOT HERE YET.  mapfield has no BASIC test at all, and the
-# only thing exercising it today is json's CI, which installs mapfield's latest
-# release into an account and calls MAPFIELD("d", 1, "", "", "") -- one call, in
-# another repo.  The type derivation and the association argument are untested.
-# That is #15, and it is the larger gap.
+# AND THE REAL TEST.  tests/MAPFIELD.SPEC runs in a real account on udt, uv and
+# jbase, through the shared runner in mv-package-registry.  Before it existed the
+# only thing exercising this package was json's CI, which installs mapfield's
+# latest release and calls MAPFIELD("d", 1, "", "", "") -- one call, in another
+# repo, exercising neither the type derivation nor the association (#15).
 name: ci
 
 on:
@@ -57,3 +57,64 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq --no-install-recommends shellcheck
           shellcheck -S warning build-pkg.sh tests/manifest-version.sh
+
+  # ---- the MV systems: run the builder's own test in a real account ----------
+  # mapfield is pure BASIC -- one FUNCTION, no $INCLUDE, nothing native -- so
+  # none of these needs a build, only somewhere to compile and CATALOG it.
+  #
+  # THE ACCOUNT WORK IS NOT HERE, and deliberately.  Making an account differs
+  # three ways and every difference was paid for in CI runs: CREATE-ACCOUNT and
+  # not mkdir on jBASE, only udt being born with a BP, UniVerse's CREATE.FILE
+  # asking seven questions with the description answered EMPTY so VOC attribute
+  # 1 stays a clean "F", and one session per run because UniVerse's licence
+  # seats do not come back fast enough for a sequence of short ones.  That lives
+  # once, in mv-package-registry's mv-package-test action, so a weak assertion
+  # has one home rather than one per package (mv-package-registry#65).
+  #
+  # `cases` IS EXACT.  A test that quietly loses a case still prints FAILURES=0
+  # and still prints no ok=0, so a minimum would go green on a shrinking suite.
+  # It must be raised when a case is added -- which is the point.
+  #
+  # They do not `need` each other: three separate self-hosted runners, so they
+  # run at once, and one platform being broken should not hide the other two.
+  jbase:
+    name: jbase
+    runs-on: [self-hosted, linux, jbase]
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: mvx-lang/mv-package-registry/.github/actions/setup-jbase@main
+      - uses: mvx-lang/mv-package-registry/.github/actions/mv-package-test@main
+        with:
+          platform: jbase
+          sources: BP/MAPFIELD
+          test: tests/MAPFIELD.SPEC
+          cases: 11
+
+  udt:
+    name: udt
+    runs-on: [self-hosted, linux, udt]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: mvx-lang/mv-package-registry/.github/actions/setup-udt@main
+      - uses: mvx-lang/mv-package-registry/.github/actions/mv-package-test@main
+        with:
+          platform: udt
+          sources: BP/MAPFIELD
+          test: tests/MAPFIELD.SPEC
+          cases: 11
+
+  uv:
+    name: uv
+    runs-on: [self-hosted, linux, uv]
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: mvx-lang/mv-package-registry/.github/actions/setup-uv@main
+      - uses: mvx-lang/mv-package-registry/.github/actions/mv-package-test@main
+        with:
+          platform: uv
+          sources: BP/MAPFIELD
+          test: tests/MAPFIELD.SPEC
+          cases: 11
