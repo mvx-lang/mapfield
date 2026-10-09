@@ -17,10 +17,12 @@ builds `name<VM>attr<VM>conv<VM>type<VM>assoc`:
 - **assoc** — empty = a single-valued (scalar) field; else the association name,
   whose members decode as **parallel multivalues** (an array of objects).
 
-## mvx vs udt
+## mvx vs the MV ports
 
-On **mvx**, `MAPFIELD` is a **compiler builtin** — this package is **udt-only**
-(`systems: udt`). A consumer that compiles on both selects with a directive:
+On **mvx**, `MAPFIELD` is a **compiler builtin**, so this package does not ship
+an mvx arm — it is built for **udt, uv and jbase** (`systems: udt uv jbase`), as
+both manifests declare. A consumer that compiles on mvx as well selects with a
+directive:
 
 ```basic
 $IFDEF MVX

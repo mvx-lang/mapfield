@@ -1,0 +1,59 @@
+# mapfield — what can be checked without an MV system, on every push and PR.
+# Copyright (C) 2026 Gordon Heydon.  GPL-2.0-only (see LICENSE).
+#
+# WHY THIS EXISTS.  There was no ci.yml at all, so a pull request here was
+# checked by nothing: release.yml triggers on a tag and nightly.yml on a
+# schedule, and neither tells you anything before a release is already being
+# cut.  What shipped in that gap was the 1.1.0 artifact declaring itself 1.0.0
+# -- PKG line 2 saying "1.0" and mvpkg.json "1.0.0", two spellings of a stale
+# number so neither looked wrong beside the other (#14).
+#
+# THE REAL TEST IS NOT HERE YET.  mapfield has no BASIC test at all, and the
+# only thing exercising it today is json's CI, which installs mapfield's latest
+# release into an account and calls MAPFIELD("d", 1, "", "", "") -- one call, in
+# another repo.  The type derivation and the association argument are untested.
+# That is #15, and it is the larger gap.
+name: ci
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source:
+    name: source
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # THE MANIFESTS MUST AGREE WITH EACH OTHER, which is checkable without a
+      # tag.  manifest-version.sh compares both files against the version it is
+      # given and compares their systems lists to each other, so handing it the
+      # version out of mvpkg.json asserts exactly the drift that shipped: PKG
+      # naming a different number in a different spelling.  The release checks
+      # both against the tag, which is the part only a tag can answer.
+      - name: The manifests agree with each other
+        run: |
+          set -eu
+          want=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+                   mvpkg.json | head -1)
+          if [ -z "$want" ]; then
+            echo "::error::mvpkg.json has no version to check against"
+            exit 1
+          fi
+          echo "mvpkg.json declares $want -- checking PKG against it"
+          sh tests/manifest-version.sh "$want"
+
+      # The two shell scripts are the only executable code here that is not
+      # BASIC, and one of them stages every published artifact.  They are clean
+      # today, so this holds that rather than discovering it during a release.
+      - name: The shell scripts lint
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq --no-install-recommends shellcheck
+          shellcheck -S warning build-pkg.sh tests/manifest-version.sh
