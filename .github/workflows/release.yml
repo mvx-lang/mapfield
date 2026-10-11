@@ -1,4 +1,30 @@
 # Release mapfield on a version tag: publish the source package as a GitHub
+#
+# TAG THE COMMIT BEING RELEASED, NOT THE MERGE THAT BRINGS IT TO MAIN
+# (mvx#343, and #19 here).  Merge develop into main as usual, then tag the
+# merge's SECOND PARENT -- develop's HEAD:
+#
+#     git checkout main && git merge develop      # as before
+#     git tag 1.1.2 "$(git rev-parse main^2)"     # NOT main
+#
+# Main only ever receives develop merges, so the two have the SAME TREE and a
+# checkout of either is byte-for-byte identical -- the ARTIFACT is the same
+# whichever you tag.  What differs is what the release can be seen as: only the
+# second parent is an ancestor of develop as well as main, and `git describe`
+# walks back to the nearest REACHABLE tag, which a merge commit on main is not.
+#
+# THIS REPO HAS THE SCAR.  1.1.0 was tagged on e88bb24, "Merge pull request #10
+# from mvx-lang/develop", so develop could not see its own release:
+#
+#     git describe --tags --match '[0-9]*' e4c7348   ->  1.1.0-beta1-3-ge4c7348
+#
+# develop reported itself as three commits past the BETA while 1.1.0 was the
+# published release.  1.1.1 was tagged on main^2 and describes as `1.1.1`.
+#
+# If main ever carries something develop does not -- a hotfix committed there
+# directly -- the trees differ and the merge itself is what to tag.  The
+# `tag-placement` job below says when that has happened rather than leaving it
+# to be found at the next release.
 # release asset.  mapfield is pure BASIC (no native build) — it installs by
 # cataloging BP/MAPFIELD — so a single portable source artifact is all it ships.
 # Copyright (C) 2026 Gordon Heydon.  GPL-2.0-only.
@@ -21,6 +47,50 @@ on:
 permissions:
   contents: write
 jobs:
+  # A WARNING, NOT A GATE.  A main-only hotfix is a legitimate reason for
+  # develop not to see a tag, so this reports to the step summary and lets the
+  # release proceed -- and it depends on nothing and nothing depends on it, so
+  # it can never hold a release up.  What it buys is that the answer arrives
+  # with the release instead of when someone thinks to look, which for 1.1.0
+  # was four months.
+  tag-placement:
+    name: develop can see this tag
+    runs-on: ubuntu-latest
+    # Only for a real version tag: `dev` is a rolling tag that is MEANT to move,
+    # and a workflow_dispatch on a branch has no tag to place.
+    if: ${{ github.ref_type == 'tag' && github.ref_name != 'dev' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0        # describe needs the history and the tags
+      - name: What develop will call itself
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          git fetch --quiet origin develop || {
+            echo "no develop branch here; nothing to check" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          }
+          # --match '[0-9]*' because this repo's tags carry no `v` prefix, and
+          # without it `describe` would happily return `dev` -- the rolling tag
+          # -- and call every placement correct.
+          desc="$(git describe --tags --match '[0-9]*' origin/develop 2>/dev/null || echo '(none)')"
+          echo "develop describes as \`$desc\`" >> "$GITHUB_STEP_SUMMARY"
+          case "$desc" in
+            "$TAG")
+              echo "develop can see $TAG." >> "$GITHUB_STEP_SUMMARY" ;;
+            *)
+              echo "::warning title=develop cannot see $TAG::develop describes as '$desc', so builds from it report that and not $TAG. For a develop release the tag belongs on the merge's second parent (git rev-parse main^2) -- see this workflow's header. For a main-only hotfix this is expected."
+              {
+                echo
+                echo "**develop cannot see \`$TAG\`.** Builds from develop will"
+                echo "report \`$desc\`. For a develop release the tag belongs on"
+                echo "the merge's second parent (\`git rev-parse main^2\`); for a"
+                echo "main-only hotfix this is expected."
+              } >> "$GITHUB_STEP_SUMMARY" ;;
+          esac
+
   # THE MANIFESTS MUST NAME THE TAG, and this runs before anything is built so a
   # mismatch fails the release instead of shipping in it.  The published 1.1.0
   # artifact declared itself 1.0.0, with PKG line 2 saying "1.0" and
