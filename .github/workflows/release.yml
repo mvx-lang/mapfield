@@ -72,15 +72,28 @@ jobs:
             echo "no develop branch here; nothing to check" >> "$GITHUB_STEP_SUMMARY"
             exit 0
           }
-          # --match '[0-9]*' because this repo's tags carry no `v` prefix, and
-          # without it `describe` would happily return `dev` -- the rolling tag
-          # -- and call every placement correct.
+          # WHAT develop WILL REPORT, for the summary.  --match '[0-9]*'
+          # because this repo's tags carry no `v` prefix, and without it
+          # `describe` would happily return `dev` -- the rolling tag.
           desc="$(git describe --tags --match '[0-9]*' origin/develop 2>/dev/null || echo '(none)')"
           echo "develop describes as \`$desc\`" >> "$GITHUB_STEP_SUMMARY"
-          case "$desc" in
-            "$TAG")
-              echo "develop can see $TAG." >> "$GITHUB_STEP_SUMMARY" ;;
-            *)
+          # THE TEST IS REACHABILITY, NOT A STRING COMPARISON, because the
+          # question is literally whether develop can see this commit.
+          #
+          # Matching describe's output against the tag looks equivalent and is
+          # not.  mvx's version of this job accepts `"$TAG"|"$TAG"-*`, and
+          # mapfield's real bug produced `1.1.0-beta1-3-ge4c7348` from develop
+          # while the tag was `1.1.0` -- which MATCHES `1.1.0-*`, so that
+          # pattern would have reported "develop can see 1.1.0" on the exact
+          # failure it exists to catch (mvx#360).  Any repo tagging
+          # X.Y.Z-betaN has the same hole.
+          #
+          # An exact match has the opposite flaw: develop legitimately moves on
+          # after a release merge, and `1.1.2-2-gabc` is develop seeing 1.1.2
+          # perfectly well.  --is-ancestor is right in both directions.
+          if git merge-base --is-ancestor "$TAG" origin/develop 2>/dev/null; then
+              echo "develop can see $TAG." >> "$GITHUB_STEP_SUMMARY"
+          else
               echo "::warning title=develop cannot see $TAG::develop describes as '$desc', so builds from it report that and not $TAG. For a develop release the tag belongs on the merge's second parent (git rev-parse main^2) -- see this workflow's header. For a main-only hotfix this is expected."
               {
                 echo
@@ -88,8 +101,8 @@ jobs:
                 echo "report \`$desc\`. For a develop release the tag belongs on"
                 echo "the merge's second parent (\`git rev-parse main^2\`); for a"
                 echo "main-only hotfix this is expected."
-              } >> "$GITHUB_STEP_SUMMARY" ;;
-          esac
+              } >> "$GITHUB_STEP_SUMMARY"
+          fi
 
   # THE MANIFESTS MUST NAME THE TAG, and this runs before anything is built so a
   # mismatch fails the release instead of shipping in it.  The published 1.1.0
