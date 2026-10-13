@@ -1,0 +1,100 @@
+   PROGRAM MAPSPEC.DICT
+* mapfield — MAPSPEC built from a dictionary.  GPL-2.0-only.
+*
+* Run it in an account with mapfield deployed:
+*
+*   UniData    BASIC BP MAPSPEC.DICT ; RUN BP MAPSPEC.DICT
+*   UniVerse   BASIC BP MAPSPEC.DICT ; RUN BP MAPSPEC.DICT
+*   jBASE      BASIC BP MAPSPEC.DICT ; RUN BP MAPSPEC.DICT
+*
+* It prints FAILURES=0 when MAPSPEC is right.
+*
+* IT USES BP'S OWN DICTIONARY as the fixture, which is deliberate: creating a
+* file from BASIC needs a sentence whose spelling differs per platform
+* (CREATE-FILE vs CREATE.FILE, with different argument forms), and this package
+* carries no preprocessor and should not grow one for a test.  Every platform
+* that can compile this already has a BP with a dictionary.
+*
+* THE TWO DICTIONARY SHAPES ARE BOTH EXERCISED.  mvx puts the association at
+* attribute 6; UniData and UniVerse put single/multi there and the association
+* at 7 (mvx docs/open-dict.md).  MAPSPEC reads whichever of 7 and 6 carries a
+* name, so cases 4 and 5 below write one of each shape and assert the same
+* answer comes back -- which is the whole claim, and it is why there is no
+* $IFDEF in MAPSPEC.
+   DEFFUN MAPFIELD(A, B, C, D, E)
+   DEFFUN MAPSPEC(A, B)
+   FAILS = 0
+   OPEN "DICT", "BP" TO DF ELSE
+      PRINT "CANNOT OPEN DICT BP -- the fixture is unavailable, not passing"
+      PRINT "FAILURES=1"
+      STOP
+   END
+*
+* Throwaway field names, prefixed so nothing real is disturbed, and removed
+* again at the end.
+   P = "ZZTEST."
+   IDS = ""
+   R = "" ; R<1> = "D" ; R<2> = 1 ; R<3> = "" ; R<4> = "One" ; R<5> = "10L"
+   WRITE R ON DF, P:"ALPHA" ; IDS<-1> = P:"ALPHA"
+   R = "" ; R<1> = "D" ; R<2> = 3 ; R<3> = "MD2" ; R<4> = "Three" ; R<5> = "8R"
+   WRITE R ON DF, P:"GAMMA" ; IDS<-1> = P:"GAMMA"
+   R = "" ; R<1> = "D" ; R<2> = 2 ; R<3> = "D4/" ; R<4> = "Two" ; R<5> = "8R"
+   WRITE R ON DF, P:"BETA" ; IDS<-1> = P:"BETA"
+*  mvx shape: association at 6
+   R = "" ; R<1> = "D" ; R<2> = 7 ; R<3> = "" ; R<4> = "Six" ; R<5> = "6L" ; R<6> = "ZZASC"
+   WRITE R ON DF, P:"MVXA" ; IDS<-1> = P:"MVXA"
+*  UniData/UniVerse shape: single/multi at 6, association at 7
+   R = "" ; R<1> = "D" ; R<2> = 8 ; R<3> = "" ; R<4> = "Sev" ; R<5> = "6L" ; R<6> = "M" ; R<7> = "ZZASC"
+   WRITE R ON DF, P:"UDTA" ; IDS<-1> = P:"UDTA"
+*  single-valued in the UniData shape: "S" at 6 must NOT become an association
+   R = "" ; R<1> = "D" ; R<2> = 9 ; R<3> = "" ; R<4> = "Eig" ; R<5> = "6L" ; R<6> = "S"
+   WRITE R ON DF, P:"UDTS" ; IDS<-1> = P:"UDTS"
+*  an I-descriptor and a phrase: neither is a stored field
+   R = "" ; R<1> = "I" ; R<2> = "1 + 1" ; R<4> = "Calc"
+   WRITE R ON DF, P:"ITYPE" ; IDS<-1> = P:"ITYPE"
+   R = "" ; R<1> = "PH" ; R<2> = P:"ALPHA " : P:"BETA"
+   WRITE R ON DF, P:"PHR" ; IDS<-1> = P:"PHR"
+*
+* Ask for the eight by name, so the account's own BP dictionary items do not
+* change the answer -- every platform ships a different set of those.
+   SPEC = MAPSPEC("BP", IDS)
+   N = DCOUNT(SPEC, @AM)
+*
+   OK = (N = 6) ; IF NOT(OK) THEN FAILS += 1
+   PRINT "1 six D-items, I and PH skipped  ok=" : OK : "  got " : N : " (want 6)"
+*
+   OK = (SPEC<1,1> = P:"ALPHA") AND (SPEC<2,1> = P:"BETA") AND (SPEC<3,1> = P:"GAMMA")
+   IF NOT(OK) THEN FAILS += 1
+   PRINT "2 sorted by attribute          ok=" : OK : "  " : SPEC<1,1> : "/" : SPEC<2,1> : "/" : SPEC<3,1>
+*
+   OK = (SPEC<2,2> = 2) AND (SPEC<2,3> = "D4/") AND (SPEC<2,4> = "DATE")
+   IF NOT(OK) THEN FAILS += 1
+   PRINT "3 attr, conv and derived type  ok=" : OK : "  " : SPEC<2,2> : "/" : SPEC<2,3> : "/" : SPEC<2,4>
+*
+   OK = (SPEC<4,5> = "ZZASC")
+   IF NOT(OK) THEN FAILS += 1
+   PRINT "4 assoc at attribute 6 (mvx)   ok=" : OK : "  got [" : SPEC<4,5> : "]"
+*
+   OK = (SPEC<5,5> = "ZZASC")
+   IF NOT(OK) THEN FAILS += 1
+   PRINT "5 assoc at attribute 7 (udt)   ok=" : OK : "  got [" : SPEC<5,5> : "]"
+*
+   OK = (SPEC<6,5> = "")
+   IF NOT(OK) THEN FAILS += 1
+   PRINT "6 S at 6 is not an assoc       ok=" : OK : "  got [" : SPEC<6,5> : "]"
+*
+   W = "" ; W<1> = P:"GAMMA" ; W<2> = P:"ALPHA"
+   S2 = MAPSPEC("BP", W)
+   OK = (DCOUNT(S2, @AM) = 2) AND (S2<1,1> = P:"ALPHA") AND (S2<2,1> = P:"GAMMA")
+   IF NOT(OK) THEN FAILS += 1
+   PRINT "7 named subset, still sorted   ok=" : OK : "  got " : DCOUNT(S2, @AM) : " fields"
+*
+   OK = (MAPSPEC("ZZNOSUCHFILE", "") = "")
+   IF NOT(OK) THEN FAILS += 1
+   PRINT "8 no such file is empty        ok=" : OK
+*
+* Leave the dictionary as it was found.
+   FOR I = 1 TO DCOUNT(IDS, @AM)
+      DELETE DF, IDS<I>
+   NEXT I
+   PRINT "FAILURES=" : FAILS
