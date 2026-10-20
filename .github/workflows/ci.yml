@@ -78,46 +78,85 @@ jobs:
   # They do not `need` each other: three separate self-hosted runners, so they
   # run at once, and one platform being broken should not hide the other two.
   jbase:
-    name: jbase
+    name: jbase ${{ matrix.name }}
     runs-on: [self-hosted, linux, jbase]
     timeout-minutes: 30
+    strategy:
+      fail-fast: false        # which test fails on which platform is the information
+      matrix:
+        include:
+          - name: MAPFIELD
+            test: tests/MAPFIELD.SPEC
+            cases: 11
+          - name: MAPSPEC
+            test: tests/MAPSPEC.DICT
+            cases: 8
     steps:
       - uses: actions/checkout@v5
       - uses: mvx-lang/mv-package-registry/.github/actions/setup-jbase@main
       - uses: mvx-lang/mv-package-registry/.github/actions/mv-package-test@main
         with:
           platform: jbase
-          sources: BP/MAPFIELD
-          test: tests/MAPFIELD.SPEC
-          cases: 11
+          # BOTH functions for both tests.  MAPFIELD.SPEC needs only MAPFIELD,
+          # but cataloging MAPSPEC as well costs nothing and keeps one source
+          # list rather than one per matrix entry.
+          sources: BP/MAPFIELD BP/MAPSPEC
+          test: ${{ matrix.test }}
+          cases: ${{ matrix.cases }}
 
   udt:
-    name: udt
+    name: udt ${{ matrix.name }}
     runs-on: [self-hosted, linux, udt]
     timeout-minutes: 45
+    strategy:
+      fail-fast: false        # which test fails on which platform is the information
+      matrix:
+        include:
+          - name: MAPFIELD
+            test: tests/MAPFIELD.SPEC
+            cases: 11
+          - name: MAPSPEC
+            test: tests/MAPSPEC.DICT
+            cases: 8
     steps:
       - uses: actions/checkout@v5
       - uses: mvx-lang/mv-package-registry/.github/actions/setup-udt@main
       - uses: mvx-lang/mv-package-registry/.github/actions/mv-package-test@main
         with:
           platform: udt
-          sources: BP/MAPFIELD
-          test: tests/MAPFIELD.SPEC
-          cases: 11
+          # BOTH functions for both tests.  MAPFIELD.SPEC needs only MAPFIELD,
+          # but cataloging MAPSPEC as well costs nothing and keeps one source
+          # list rather than one per matrix entry.
+          sources: BP/MAPFIELD BP/MAPSPEC
+          test: ${{ matrix.test }}
+          cases: ${{ matrix.cases }}
 
   uv:
-    name: uv
+    name: uv ${{ matrix.name }}
     runs-on: [self-hosted, linux, uv]
     timeout-minutes: 45
+    strategy:
+      fail-fast: false        # which test fails on which platform is the information
+      matrix:
+        include:
+          - name: MAPFIELD
+            test: tests/MAPFIELD.SPEC
+            cases: 11
+          - name: MAPSPEC
+            test: tests/MAPSPEC.DICT
+            cases: 8
     steps:
       - uses: actions/checkout@v5
       - uses: mvx-lang/mv-package-registry/.github/actions/setup-uv@main
       - uses: mvx-lang/mv-package-registry/.github/actions/mv-package-test@main
         with:
           platform: uv
-          sources: BP/MAPFIELD
-          test: tests/MAPFIELD.SPEC
-          cases: 11
+          # BOTH functions for both tests.  MAPFIELD.SPEC needs only MAPFIELD,
+          # but cataloging MAPSPEC as well costs nothing and keeps one source
+          # list rather than one per matrix entry.
+          sources: BP/MAPFIELD BP/MAPSPEC
+          test: ${{ matrix.test }}
+          cases: ${{ matrix.cases }}
 
   # ---- the workflows themselves, statically -----------------------------------
   # Ported from json's lint-workflows (json#46), which came from mvx's and
