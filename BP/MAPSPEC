@@ -1,0 +1,100 @@
+FUNCTION MAPSPEC(FN, WANT)
+* mapfield — build a %MAP% spec from a FILE'S DICTIONARY, rather than field by
+* field.  GPL-2.0-only.
+*
+*   SPEC = MAPSPEC("CUSTOMERS", "")        every mappable D-item
+*   SPEC = MAPSPEC("CUSTOMERS", FIELDS)    only these (@AM-delimited names)
+*
+* Returns the same spec format MAPFIELD builds and json consumes:
+* name<VM>attr<VM>conv<VM>type<VM>assoc, one field per attribute.  Empty when
+* the dictionary cannot be opened.
+*
+* WHY: a spec assembled by hand is a SECOND VOCABULARY -- whatever names that
+* programmer chose, in that program.  Taken from the dictionary, the names are
+* the file's own, so a LIST, the SQL projection, json and a template all say
+* CUST.NAME and mean the same thing (#24).
+*
+* IT CALLS MAPFIELD PER FIELD rather than formatting the spec itself, so the
+* conv -> type derivation has exactly one implementation.  Change the rules
+* there and this follows.
+*
+* --- what counts as mappable ---------------------------------------------
+* ONLY D-ITEMS THAT NAME AN ATTRIBUTE.  An I-descriptor is a computed field,
+* not a stored one; resolving it would mean evaluating the descriptor, which is
+* both a bigger job and a way for a consumer to run arbitrary dictionary code.
+* PH phrases are not fields at all.  Both are skipped, and that is a stated
+* limitation rather than an oversight.
+*
+* --- the attribute the association lives in ------------------------------
+* THE LAYOUTS DIFFER, AND NOT WHERE YOU WOULD GUESS.  mvx's D-item is
+*
+*     1 D   2 attr#   3 conv   4 heading   5 format   6 assoc
+*
+* while UniData's and UniVerse's is
+*
+*     1 D   2 loc     3 conv   4 name      5 format   6 S/M   7 assoc
+*
+* (mvx docs/open-dict.md).  They agree on 1-5 and diverge at 6: mvx puts the
+* association there, the others put single/multi there and the association at
+* 7.  jBASE's shape is documented nowhere I could find.
+*
+* So this does not branch on platform.  It takes the association from whichever
+* of 7 and 6 carries a NAME -- an association name is never "S" or "M", which
+* is exactly what the other layout puts there.  One rule, no $IFDEF, and it is
+* right on both documented shapes without being told which it is reading.
+   DEFFUN MAPFIELD(A, B, C, D, E)
+   SPEC = "" ; KEYS = ""
+   IF FN = "" THEN RETURN("")
+   OPEN "DICT", FN TO DFV ELSE RETURN("")
+*
+* Either the names asked for, or every id in the dictionary.
+   IDS = ""
+   IF WANT # "" THEN
+      IDS = WANT
+   END ELSE
+*     A SELECT-LIST VARIABLE, pre-assigned, with LOOP/ELSE EXIT.  Every part of
+*     that spelling is load-bearing: UniVerse rejects a numbered list ("option
+*     'S' requires variable name") and will not parse LOOP WHILE READNEXT, and
+*     UniData prints "UNINITIALIZED VARIABLE USED!" into the caller's own output
+*     if the list variable is not assigned first (mv_git settled this spelling).
+      DLIST = ""
+      SELECT DFV TO DLIST
+      LOOP
+         READNEXT DID FROM DLIST ELSE EXIT
+         IDS<-1> = DID
+      REPEAT
+   END
+*
+   NI = DCOUNT(IDS, @AM)
+   FOR I = 1 TO NI
+      DID = IDS<I>
+      IF DID = "" THEN CONTINUE
+      READ DREC FROM DFV, DID THEN
+         DTYPE = OCONV(TRIM(DREC<1>), "MCU")
+         IF DTYPE = "D" THEN
+            LOC = TRIM(DREC<2>)
+*           A D-item whose location is not a number does not name an attribute
+*           -- some dictionaries carry D-items pointing at the record id with a
+*           non-numeric marker.  Skipped rather than guessed at.
+            IF LOC # "" AND NUM(LOC) THEN
+               CONV = TRIM(DREC<3>)
+*              The association, from whichever attribute holds a name.
+               ASSOC = TRIM(DREC<7>)
+               IF ASSOC = "" THEN
+                  A6 = OCONV(TRIM(DREC<6>), "MCU")
+                  IF A6 # "" AND A6 # "S" AND A6 # "M" THEN ASSOC = TRIM(DREC<6>)
+               END
+*              SORTED BY ATTRIBUTE, so the spec mirrors the record's own layout
+*              and two runs over one dictionary agree -- SELECT makes no promise
+*              about order, and a spec whose field order moves between runs
+*              makes every encoded document differ for no reason.
+*              LOCATE Format 1 (parenthesised) with "AL": the flavour-dependent
+*              IN...SETTING form is not portable.
+               LOCATE(LOC, KEYS; POS; "AL") ELSE NULL
+               KEYS = INSERT(KEYS, POS, 0, 0, LOC)
+               SPEC = INSERT(SPEC, POS, 0, 0, MAPFIELD(DID, LOC, CONV, "", ASSOC))
+            END
+         END
+      END
+   NEXT I
+   RETURN(SPEC)
