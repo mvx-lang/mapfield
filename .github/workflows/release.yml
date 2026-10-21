@@ -1,4 +1,30 @@
 # Release mapfield on a version tag: publish the source package as a GitHub
+#
+# TAG THE COMMIT BEING RELEASED, NOT THE MERGE THAT BRINGS IT TO MAIN
+# (mvx#343, and #19 here).  Merge develop into main as usual, then tag the
+# merge's SECOND PARENT -- develop's HEAD:
+#
+#     git checkout main && git merge develop      # as before
+#     git tag 1.1.2 "$(git rev-parse main^2)"     # NOT main
+#
+# Main only ever receives develop merges, so the two have the SAME TREE and a
+# checkout of either is byte-for-byte identical -- the ARTIFACT is the same
+# whichever you tag.  What differs is what the release can be seen as: only the
+# second parent is an ancestor of develop as well as main, and `git describe`
+# walks back to the nearest REACHABLE tag, which a merge commit on main is not.
+#
+# THIS REPO HAS THE SCAR.  1.1.0 was tagged on e88bb24, "Merge pull request #10
+# from mvx-lang/develop", so develop could not see its own release:
+#
+#     git describe --tags --match '[0-9]*' e4c7348   ->  1.1.0-beta1-3-ge4c7348
+#
+# develop reported itself as three commits past the BETA while 1.1.0 was the
+# published release.  1.1.1 was tagged on main^2 and describes as `1.1.1`.
+#
+# If main ever carries something develop does not -- a hotfix committed there
+# directly -- the trees differ and the merge itself is what to tag.  The
+# `tag-placement` job below says when that has happened rather than leaving it
+# to be found at the next release.
 # release asset.  mapfield is pure BASIC (no native build) — it installs by
 # cataloging BP/MAPFIELD — so a single portable source artifact is all it ships.
 # Copyright (C) 2026 Gordon Heydon.  GPL-2.0-only.
@@ -21,23 +47,88 @@ on:
 permissions:
   contents: write
 jobs:
-  # THE MANIFESTS MUST NAME THE TAG, and this runs before anything is built so a
-  # mismatch fails the release instead of shipping in it.  The published 1.1.0
-  # artifact declared itself 1.0.0, with PKG line 2 saying "1.0" and
-  # mvpkg.json "1.0.0" -- two spellings, so neither looked wrong beside the
-  # other, and nothing reads these fields back except MVPKG info on a stored
-  # manifest (#14).
+  # A WARNING, NOT A GATE.  A main-only hotfix is a legitimate reason for
+  # develop not to see a tag, so this reports to the step summary and lets the
+  # release proceed -- and it depends on nothing and nothing depends on it, so
+  # it can never hold a release up.  What it buys is that the answer arrives
+  # with the release instead of when someone thinks to look, which for 1.1.0
+  # was four months.
+  tag-placement:
+    name: develop can see this tag
+    runs-on: ubuntu-latest
+    # Only for a real version tag: `dev` is a rolling tag that is MEANT to move,
+    # and a workflow_dispatch on a branch has no tag to place.
+    if: ${{ github.ref_type == 'tag' && github.ref_name != 'dev' }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0        # describe needs the history and the tags
+      - name: What develop will call itself
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          set -eu
+          git fetch --quiet origin develop || {
+            echo "no develop branch here; nothing to check" >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          }
+          # WHAT develop WILL REPORT, for the summary.  --match '[0-9]*'
+          # because this repo's tags carry no `v` prefix, and without it
+          # `describe` would happily return `dev` -- the rolling tag.
+          desc="$(git describe --tags --match '[0-9]*' origin/develop 2>/dev/null || echo '(none)')"
+          echo "develop describes as \`$desc\`" >> "$GITHUB_STEP_SUMMARY"
+          # THE TEST IS REACHABILITY, NOT A STRING COMPARISON, because the
+          # question is literally whether develop can see this commit.
+          #
+          # Matching describe's output against the tag looks equivalent and is
+          # not.  mvx's version of this job accepts `"$TAG"|"$TAG"-*`, and
+          # mapfield's real bug produced `1.1.0-beta1-3-ge4c7348` from develop
+          # while the tag was `1.1.0` -- which MATCHES `1.1.0-*`, so that
+          # pattern would have reported "develop can see 1.1.0" on the exact
+          # failure it exists to catch (mvx#360).  Any repo tagging
+          # X.Y.Z-betaN has the same hole.
+          #
+          # An exact match has the opposite flaw: develop legitimately moves on
+          # after a release merge, and `1.1.2-2-gabc` is develop seeing 1.1.2
+          # perfectly well.  --is-ancestor is right in both directions.
+          if git merge-base --is-ancestor "$TAG" origin/develop 2>/dev/null; then
+              echo "develop can see $TAG." >> "$GITHUB_STEP_SUMMARY"
+          else
+              echo "::warning title=develop cannot see $TAG::develop describes as '$desc', so builds from it report that and not $TAG. For a develop release the tag belongs on the merge's second parent (git rev-parse main^2) -- see this workflow's header. For a main-only hotfix this is expected."
+              {
+                echo
+                echo "**develop cannot see \`$TAG\`.** Builds from develop will"
+                echo "report \`$desc\`. For a develop release the tag belongs on"
+                echo "the merge's second parent (\`git rev-parse main^2\`); for a"
+                echo "main-only hotfix this is expected."
+              } >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+  # THE TWO MANIFESTS MUST AGREE WITH EACH OTHER.  It no longer checks them
+  # against the TAG, and that is deliberate (mvx#363): every artifact is now
+  # stamped at staging -- publish-source for the source tarball, the account
+  # job for the three account tarballs -- so the in-tree version is derived,
+  # not authoritative, and requiring it to name the tag would block exactly
+  # the releases stamping makes correct.
   #
-  # EVERY OTHER JOB DEPENDS ON THIS ONE, including `source`, whose staging lives
-  # outside this repo: publish-source and build-pkg.sh both copy the in-tree PKG
-  # and mvpkg.json verbatim, so checking those two files once covers all four
-  # artifacts.
+  # What stamping does NOT cover is the two files disagreeing with each other
+  # about SYSTEMS, which is tag-independent and is what caught json#38.  So the
+  # script is handed mvpkg.json's own version -- the same invocation ci.yml
+  # uses -- which asserts PKG agrees with it and compares the systems lists.
+  #
+  # EVERY OTHER JOB STILL DEPENDS ON THIS ONE: a disagreement between the two
+  # files ships in every artifact, because both are copied into all four.
   manifests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
-      - name: The manifests declare the tag
-        run: sh tests/manifest-version.sh "${GITHUB_REF_NAME}"
+      - name: The manifests agree with each other
+        run: |
+          set -eu
+          want=$(sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+                   mvpkg.json | head -1)
+          [ -n "$want" ] || { echo "::error::mvpkg.json has no version"; exit 1; }
+          sh tests/manifest-version.sh "$want"
 
   source:
     needs: [manifests]
@@ -74,6 +165,21 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+
+      # JUST THE STAMPER.  This job compiles nothing, so it needs no toolchain
+      # -- stamp-manifests.py is standalone Python.  Taken from mvx's `main`,
+      # its RELEASED line, which moves when a release merges and not before:
+      # the right coupling for a script with no compiler dependency, and the
+      # opposite of the default branch.
+      - name: Check out the manifest stamper
+        uses: actions/checkout@v5
+        with:
+          repository: mvx-lang/mvx
+          ref: main
+          path: .mvx-src
+          sparse-checkout: .github/actions/publish-source
+          sparse-checkout-cone-mode: false
+
       - name: Stage the ${{ matrix.system }} account
         id: pkg
         shell: bash
@@ -83,6 +189,25 @@ jobs:
           BASE="mapfield-$VER-${{ matrix.system }}-any-any-le"
           rm -rf dist && mkdir -p dist
           sh build-pkg.sh dist
+          # THE TAG IS THE SOURCE OF TRUTH, not a number someone remembered to
+          # commit (mvx#363).  Three packages shipped artifacts declaring the
+          # wrong version this year -- json#28, mapfield#14, curl-cmd#22 --
+          # every one because build-pkg.sh copies the in-tree manifests
+          # verbatim and nothing wrote the tag into them.
+          #
+          # STAMPED AFTER STAGING, on the staged copy rather than the tree: the
+          # artifact is what has to be honest, and leaving the checkout alone
+          # keeps this job independent of the order the matrix runs in.
+          #
+          # And ASSERTED, because a stamper that silently did nothing would
+          # leave exactly the bug it is here to prevent.
+          if [ "${GITHUB_REF_TYPE:-}" = tag ]; then
+            python3 .mvx-src/.github/actions/publish-source/stamp-manifests.py \
+              dist/mapfield "$VER"
+            test "$(sed -n 2p dist/mapfield/PKG)" = "$VER"
+          else
+            echo "not a tag (${GITHUB_REF_TYPE:-unset} $VER): manifests left as committed"
+          fi
           tar czf "$BASE.tar.gz" -C dist mapfield
           sha256sum "$BASE.tar.gz" > "$BASE.tar.gz.sha256"
           echo "tarball=$BASE.tar.gz" >> "$GITHUB_OUTPUT"

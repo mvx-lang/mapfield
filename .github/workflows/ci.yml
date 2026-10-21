@@ -78,43 +78,128 @@ jobs:
   # They do not `need` each other: three separate self-hosted runners, so they
   # run at once, and one platform being broken should not hide the other two.
   jbase:
-    name: jbase
+    name: jbase ${{ matrix.name }}
     runs-on: [self-hosted, linux, jbase]
     timeout-minutes: 30
+    strategy:
+      fail-fast: false        # which test fails on which platform is the information
+      matrix:
+        include:
+          - name: MAPFIELD
+            test: tests/MAPFIELD.SPEC
+            cases: 11
+          - name: MAPSPEC
+            test: tests/MAPSPEC.DICT
+            cases: 8
     steps:
       - uses: actions/checkout@v5
       - uses: mvx-lang/mv-package-registry/.github/actions/setup-jbase@main
       - uses: mvx-lang/mv-package-registry/.github/actions/mv-package-test@main
         with:
           platform: jbase
-          sources: BP/MAPFIELD
-          test: tests/MAPFIELD.SPEC
-          cases: 11
+          # BOTH functions for both tests.  MAPFIELD.SPEC needs only MAPFIELD,
+          # but cataloging MAPSPEC as well costs nothing and keeps one source
+          # list rather than one per matrix entry.
+          sources: BP/MAPFIELD BP/MAPSPEC
+          test: ${{ matrix.test }}
+          cases: ${{ matrix.cases }}
 
   udt:
-    name: udt
+    name: udt ${{ matrix.name }}
     runs-on: [self-hosted, linux, udt]
     timeout-minutes: 45
+    strategy:
+      fail-fast: false        # which test fails on which platform is the information
+      matrix:
+        include:
+          - name: MAPFIELD
+            test: tests/MAPFIELD.SPEC
+            cases: 11
+          - name: MAPSPEC
+            test: tests/MAPSPEC.DICT
+            cases: 8
     steps:
       - uses: actions/checkout@v5
       - uses: mvx-lang/mv-package-registry/.github/actions/setup-udt@main
       - uses: mvx-lang/mv-package-registry/.github/actions/mv-package-test@main
         with:
           platform: udt
-          sources: BP/MAPFIELD
-          test: tests/MAPFIELD.SPEC
-          cases: 11
+          # BOTH functions for both tests.  MAPFIELD.SPEC needs only MAPFIELD,
+          # but cataloging MAPSPEC as well costs nothing and keeps one source
+          # list rather than one per matrix entry.
+          sources: BP/MAPFIELD BP/MAPSPEC
+          test: ${{ matrix.test }}
+          cases: ${{ matrix.cases }}
 
   uv:
-    name: uv
+    name: uv ${{ matrix.name }}
     runs-on: [self-hosted, linux, uv]
     timeout-minutes: 45
+    strategy:
+      fail-fast: false        # which test fails on which platform is the information
+      matrix:
+        include:
+          - name: MAPFIELD
+            test: tests/MAPFIELD.SPEC
+            cases: 11
+          - name: MAPSPEC
+            test: tests/MAPSPEC.DICT
+            cases: 8
     steps:
       - uses: actions/checkout@v5
       - uses: mvx-lang/mv-package-registry/.github/actions/setup-uv@main
       - uses: mvx-lang/mv-package-registry/.github/actions/mv-package-test@main
         with:
           platform: uv
-          sources: BP/MAPFIELD
-          test: tests/MAPFIELD.SPEC
-          cases: 11
+          # BOTH functions for both tests.  MAPFIELD.SPEC needs only MAPFIELD,
+          # but cataloging MAPSPEC as well costs nothing and keeps one source
+          # list rather than one per matrix entry.
+          sources: BP/MAPFIELD BP/MAPSPEC
+          test: ${{ matrix.test }}
+          cases: ${{ matrix.cases }}
+
+  # ---- the workflows themselves, statically -----------------------------------
+  # Ported from json's lint-workflows (json#46), which came from mvx's and
+  # mv-package-registry's.  The two things that are easy to get wrong about
+  # actionlint were reproduced in THIS repo before this was written (#25).
+  #
+  # WHAT WAS UNCHECKED.  ci.yml's `source` job shellchecks the standalone
+  # scripts -- build-pkg.sh and tests/manifest-version.sh -- and nothing checked
+  # the shell INSIDE the workflows: 3 workflows, 7 `run:` blocks, 100 lines.
+  # That shell resolves a release tag and compares manifests, so a mistake in it
+  # fails a release rather than a test.  Nor was anything checking the workflows
+  # themselves -- a bad expression, a composite step with no `shell:`, a
+  # `steps.<id>.outputs` with no such step.  All parse; all fail at run time.
+  lint-workflows:
+    name: lint-workflows
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      # SHELLCHECK MUST BE HERE, AND actionlint WILL NOT SAY SO.  It runs the
+      # shell checks only when shellcheck is on PATH and is silent when it is
+      # absent -- it simply checks less.  Measured in json by planting one
+      # unquoted variable in a workflow: SC2086 reported with shellcheck on
+      # PATH, zero findings and exit 0 without it.  So without this step the job
+      # passes while checking nothing.  GitHub's images ship shellcheck, so this
+      # is about noticing the day one stops.
+      - name: "shellcheck is present, so the shell in run: blocks is checked too"
+        run: |
+          set -eu
+          command -v shellcheck >/dev/null || {
+            echo "::error::no shellcheck on PATH -- actionlint would skip every"
+            echo "::error::run: block silently.  Install it in this job."
+            exit 1
+          }
+          shellcheck --version | sed -n '2p'
+
+      # PINNED, not @latest: a linter that changes under us turns an unrelated
+      # push red.  `go install` at a tag also gets module checksum verification
+      # from the Go checksum database, which a curl|sh installer does not.
+      - name: Lint every workflow
+        env:
+          ACTIONLINT_VERSION: v1.7.12
+        run: |
+          set -eu
+          go install "github.com/rhysd/actionlint/cmd/actionlint@$ACTIONLINT_VERSION"
+          "$(go env GOPATH)/bin/actionlint" -color

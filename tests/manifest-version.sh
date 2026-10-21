@@ -4,26 +4,36 @@
 #
 #   sh tests/manifest-version.sh <version>
 #
-# WHY A CHECK AND NOT A STAMP.  mv_package stamps the tag into its staged
-# manifests and that is the better answer where one script does the staging.
-# mapfield's artifacts are staged in TWO places -- build-pkg.sh here for all
-# three account artifacts, and mvx's publish-source for the portable one -- and
-# one of those is outside this repo.  Both copy the in-tree PKG and mvpkg.json
-# verbatim, so checking those two files once, before anything is built, makes
-# every artifact right.
+# WHAT THIS CHECKS, AND WHAT IT NO LONGER DOES.  It asserts the two manifests
+# AGREE -- with each other on the version, and with each other on the systems
+# list.  It no longer has a job policing the version against the TAG, because
+# the tag is now stamped into every staged artifact instead (mvx#363):
+# publish-source for the source tarball, the account job for the three account
+# tarballs.  So the in-tree version is derived, not authoritative.
 #
-# WHAT WENT WRONG WITHOUT IT.  The published 1.1.0 artifact declared itself
+# AN EARLIER VERSION OF THIS HEADER ARGUED THE OPPOSITE -- that checking beat
+# stamping here, because the artifacts are staged in two places and one is
+# outside this repo.  That was wrong twice over: both of those places stamp
+# now, and three packages had already shipped wrong versions under the checking
+# approach (json#28, mapfield#14, curl-cmd#22).  A check catches someone
+# forgetting; a stamp removes the thing to forget.
+#
+# WHAT WENT WRONG BEFORE EITHER.  The published 1.1.0 artifact declared itself
 # 1.0.0 (#14).  Measured from the release, not inferred:
 #
 #     mapfield-1.1.0-udt-any-any-le.tar.gz  ->  mvpkg.json "version": "1.0.0"
 #                                               PKG line 2  1.0
 #
 # The two files did not even agree with each other -- "1.0" and "1.0.0" -- so
-# there was no single stale number to notice.  Nothing resolves against these
-# fields (mvpkg takes versions from the registry and the store inventory, and
-# reads only name, description, deploy and dependencies from a manifest), which
-# is exactly why it shipped: the only thing that reads them back is MVPKG info
-# on a stored manifest, and it reports the wrong version to this day.
+# there was no single stale number to notice.  THAT disagreement is what this
+# script still exists for: stamping writes one version into both files and so
+# cannot detect that they disagreed about anything else, and a systems list
+# that differs between them ships in every artifact (json#38).
+#
+# Nothing resolves against these fields (mvpkg takes versions from the registry
+# and the store inventory, and reads only name, description, deploy and
+# dependencies from a manifest), which is exactly why the drift shipped: the
+# only thing that reads them back is MVPKG info on a stored manifest.
 set -eu
 WANT="${1:?usage: manifest-version.sh <version>}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -39,7 +49,7 @@ if [ -f "$ROOT/mvpkg.json" ]; then
   if [ "$got" = "$WANT" ]; then
     printf '  ok   mvpkg.json version is %s\n' "$WANT"
   else
-    printf '  FAIL mvpkg.json says "%s", the tag is "%s"\n' "$got" "$WANT"; rc=1
+    printf '  FAIL mvpkg.json says "%s", not "%s"\n' "$got" "$WANT"; rc=1
   fi
 fi
 
@@ -52,7 +62,7 @@ if [ -f "$ROOT/PKG" ]; then
   if [ "$got" = "$WANT" ]; then
     printf '  ok   PKG line 2 is %s\n' "$WANT"
   else
-    printf '  FAIL PKG line 2 says "%s", the tag is "%s"\n' "$got" "$WANT"; rc=1
+    printf '  FAIL PKG line 2 says "%s", not "%s"\n' "$got" "$WANT"; rc=1
   fi
 fi
 
@@ -75,7 +85,6 @@ if [ -n "$sysline" ] || [ -n "$sysjson" ]; then
 fi
 
 if [ "$rc" -ne 0 ]; then
-  printf 'manifests: make the two manifests agree, and name %s, before tagging\n' \
-         "$WANT" >&2
+  printf 'manifests: make both files say %s\n' "$WANT" >&2
 fi
 exit "$rc"
