@@ -1,5 +1,5 @@
 #!/bin/sh
-# mapfield — assert the in-tree manifests agree with each other and with the tag.
+# mapfield — assert the in-tree manifests agree with each other.
 # Copyright (C) 2026 Gordon Heydon.  GPL-2.0-only (see LICENSE).
 #
 #   sh tests/manifest-version.sh <version>
@@ -10,6 +10,13 @@
 # the tag is now stamped into every staged artifact instead (mvx#363):
 # publish-source for the source tarball, the account job for the three account
 # tarballs.  So the in-tree version is derived, not authoritative.
+#
+# WHICH IS WHY BOTH MANIFESTS SAY 0.0.0-dev (#30).  A number in here can only be
+# stale or coincidentally right -- mapfield's said 1.1.1 while 1.2.0 was the
+# published release -- so the committed value says "this is not the answer, ask
+# the tag" instead of naming a release it is not.  Do not bump it; nothing reads
+# it.  The release stamps over it, and `MVPKG install --source` records the
+# literal `source` rather than reading it at all.
 #
 # AN EARLIER VERSION OF THIS HEADER ARGUED THE OPPOSITE -- that checking beat
 # stamping here, because the artifacts are staged in two places and one is
